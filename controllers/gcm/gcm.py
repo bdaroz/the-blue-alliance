@@ -268,9 +268,6 @@ class GCMConnection:
         elif error_msg == "InvalidTtl":
             logging.error("ERROR: GCM Time to Live field must be an integer representing a duration in seconds between 0 and 2,419,200 (4 weeks).")
 
-        elif error_msg == "MessageTooBig":
-            logging.error("ERROR: GCM message too big (max 4096 bytes).")
-
         elif error_msg == "Unavailable":
             retry_seconds = 10
             logging.error('ERROR: GCM Unavailable. Retry after delay. Requeuing message. Delay in seconds: ' + str(retry_seconds))
