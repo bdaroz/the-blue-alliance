@@ -55,9 +55,9 @@
     <!-- Auto Total -->
     {% if "autoPoints" in match.score_breakdown.red %}
     <tr class="key">
-      <td class="redScore" colspan="2"><b>{% if match.score_breakdown.red.autoPoints %}{{match.score_breakdown.red.autoPoints}}{%else%}0{%endif%}</b></td>
+      <td class="redScore" colspan="2"><strong>{% if match.score_breakdown.red.autoPoints %}{{match.score_breakdown.red.autoPoints}}{%else%}0{%endif%}</strong></td>
       <th>Total Auto</th>
-      <td class="blueScore" colspan="2"><b>{% if match.score_breakdown.blue.autoPoints %}{{match.score_breakdown.blue.autoPoints}}{%else%}0{%endif%}</b></td>
+      <td class="blueScore" colspan="2"><strong>{% if match.score_breakdown.blue.autoPoints %}{{match.score_breakdown.blue.autoPoints}}{%else%}0{%endif%}</strong></td>
     </tr>
     {% endif %}
 
@@ -130,9 +130,9 @@
     <!-- Teleop Total -->
     {% if "teleopPoints" in match.score_breakdown.red %}
     <tr class="key">
-      <td class="redScore" colspan="2"><b>{% if match.score_breakdown.red.teleopPoints %}{{match.score_breakdown.red.teleopPoints}}{%else%}0{%endif%}</b></td>
+      <td class="redScore" colspan="2"><strong>{% if match.score_breakdown.red.teleopPoints %}{{match.score_breakdown.red.teleopPoints}}{%else%}0{%endif%}</strong></td>
       <th>Total Teleop</th>
-      <td class="blueScore" colspan="2"><b>{% if match.score_breakdown.blue.teleopPoints %}{{match.score_breakdown.blue.teleopPoints}}{%else%}0{%endif%}</b></td>
+      <td class="blueScore" colspan="2"><strong>{% if match.score_breakdown.blue.teleopPoints %}{{match.score_breakdown.blue.teleopPoints}}{%else%}0{%endif%}</strong></td>
     </tr>
     {% endif %}
 
@@ -169,9 +169,9 @@
     {% endif %}
 
     <tr class="key">
-      <td class="redScore" colspan="2"><b>{%if match.score_breakdown.red.totalPoints%}{{match.score_breakdown.red.totalPoints}}{%else%}0{%endif%}</b></td>
+      <td class="redScore" colspan="2"><strong>{%if match.score_breakdown.red.totalPoints%}{{match.score_breakdown.red.totalPoints}}{%else%}0{%endif%}</strong></td>
       <th>Total Score</th>
-      <td class="blueScore" colspan="2"><b>{%if match.score_breakdown.blue.totalPoints%}{{match.score_breakdown.blue.totalPoints}}{%else%}0{%endif%}</b></td>
+      <td class="blueScore" colspan="2"><strong>{%if match.score_breakdown.blue.totalPoints%}{{match.score_breakdown.blue.totalPoints}}{%else%}0{%endif%}</strong></td>
     </tr>
 
     {% if match.score_breakdown.red.get('tba_rpEarned') is not none %}

@@ -28,14 +28,14 @@
   <div class="gameday-container">
     <div class="brand gameday-brand pull-left">
       <span class="gameday-title">GameDay</span>
-      <a href="https://www.vexrobotics.com/vexpro/" target="_blank"><img src="images/powered-by-vexpro.png" /></a>
+      <a href="https://www.vexrobotics.com/vexpro/" target="_blank"><img src="images/powered-by-vexpro.png" alt="VEXPro Logo: Powered By VEXPro"/></a>
       <a href="/">back to The Blue Alliance &raquo;</a>
       <div class="div_helper"></div>
     </div>
 
     <ul class="nav navbar-nav pull-right">
       <li class="dropdown">
-        <a class="dropdown-toggle" href="#">Layouts <b class="caret"></b></a>
+        <a class="dropdown-toggle" href="#">Layouts <strong class="caret"></strong></a>
         <ul class="dropdown-menu">
           <li><a class="layout-choice layout_0" href="javascript:layout_0()">Single View</a>
           <li><a class="layout-choice layout_1" href="javascript:layout_1()">Split View</a></li>
@@ -50,7 +50,7 @@
       </li>
 
       <li class="dropdown">
-        <a class="dropdown-toggle" href="#">Webcasts <b class="caret"></b></a>
+        <a class="dropdown-toggle" href="#">Webcasts <strong class="caret"></strong></a>
         <ul class="dropdown-menu webcasts">
         {% for webcast in special_webcasts %}
           <li><a id='{{webcast.key_name}}-1'
@@ -71,7 +71,7 @@
       </li>
 
       <li class="dropdown">
-        <a class="dropdown-toggle" href="#">Results <b class="caret"></b></a>
+        <a class="dropdown-toggle" href="#">Results <strong class="caret"></strong></a>
         <ul class="dropdown-menu results">
         {% for event in ongoing_events %}
           <li><a class="event_results" href="/event/{{event.key_name}}">{{event.display_name}} [{{event.event_short|upper}}]</a></li>

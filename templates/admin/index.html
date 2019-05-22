@@ -125,9 +125,9 @@ $(function () {
             <h3 class="panel-title">Continuous Deployment</h3>
           </div>
          <div class="panel-body">
-           <p>Continuous Deployment is <b>{% if contbuild_enabled %}ENABLED{% else %}DISABLED{% endif %}</b>!
+           <p>Continuous Deployment is <strong>{% if contbuild_enabled %}ENABLED{% else %}DISABLED{% endif %}</strong>!
            </p>
-           <img src="https://travis-ci.org/the-blue-alliance/the-blue-alliance.svg?branch=master" />
+           <img src="https://travis-ci.org/the-blue-alliance/the-blue-alliance.svg?branch=master" alt="Continuous Integration Status Image"/>
            <p>Travis build: {% if build_number %}<a href="https://travis-ci.org/the-blue-alliance/the-blue-alliance/builds/{{ build_number }}">{{ build_number }}</a>{% else %}unknown{% endif %}</p>
            <a class="btn btn-danger" href="/admin/contbuild/{% if contbuild_enabled %}disable{% else %}enable{% endif %}">
              <span class="glyphicon glyphicon-{% if contbuild_enabled %}pause{% else %}play{% endif %}"></span> {% if contbuild_enabled %}Disable{% else %}Enable{% endif %} Continuous Push
@@ -195,8 +195,8 @@ $(function () {
                         <td><a href="/admin/user/{{user.key.id}}">{{user.display_name}}</a></td>
                         <td>
                             <div class="btn-group pull-right">
-                                <a href="/admin/user/edit/{{user.key.id}}" class="btn btn-primary btn-xs"><i class="glyphicon glyphicon-pencil"></i></a>
-                                <a href="#" class="btn btn-danger disabled btn-xs"><i class="glyphicon glyphicon-trash"></i></a>
+                                <a href="/admin/user/edit/{{user.key.id}}" class="btn btn-primary btn-xs"><em class="glyphicon glyphicon-pencil"></em></a>
+                                <a href="#" class="btn btn-danger disabled btn-xs"><em class="glyphicon glyphicon-trash"></em></a>
                             </div>
                         </td>
                     </tr>
