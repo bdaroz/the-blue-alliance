@@ -90,10 +90,7 @@ class PlayoffType(object):
         if playoff_type == cls.ROUND_ROBIN_6_TEAM:
             # Einstein 2017 for example. 15 round robin matches from sf1-1 to sf1-15, then finals
             match_number = match_number if match_number <= 15 else match_number - 15
-            if comp_level == 'f':
-                return 1, match_number
-            else:
-                return 1, match_number
+            return 1, match_number
         elif playoff_type == cls.DOUBLE_ELIM_8_TEAM:
             if comp_level in {'ef', 'qf', 'sf', 'f'}:
                 level, set, match = cls.DOUBLE_ELIM_MAPPING.get(match_number)
