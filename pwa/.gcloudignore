@@ -1,0 +1,8 @@
+# Ignore everything
+/*
+
+# Explicitly include:
+!package.json
+!pnpm-lock.yaml
+!build/
+!server.js

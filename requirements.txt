@@ -1,7 +1,18 @@
-# Packages that are needed for development, but not deployment because
-# they are either included in App Engine or are not needed at all
-jinja2==2.6
-numpy==1.6.1
-Paver==1.2.4
-pep8==1.7.0
-pyyaml
+beautifulsoup4==4.14.3
+black==25.12.0
+flake8==7.3.0
+flake8-import-order
+flake8-tidy-imports
+blinker==1.9.0
+freezegun==1.5.5
+pre-commit
+pyre-check==0.9.25
+pytest
+pytest-cov
+pytest-custom_exit_code
+pytest-split
+pytest-testmon
+PyYAML==6.0.3
+requests-mock==1.12.1
+shellcheck-py
+six

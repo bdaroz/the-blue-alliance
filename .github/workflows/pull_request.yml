@@ -1,0 +1,533 @@
+name: On pull request
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  py3-type:
+    name: "[py3] Type Check"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            python:
+              - '**/*.py'
+              - '**/requirements.txt'
+      - name: Set up Python 3.13
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - name: Install Dependencies
+        if: steps.changes.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r src/requirements.txt
+      - name: Run Type Check
+        if: steps.changes.outputs.python == 'true'
+        run: ./ops/typecheck_py3.sh
+  py3-lint:
+    name: "[py3] Format & Lint"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            python:
+              - '**/*.py'
+              - '**/requirements.txt'
+      - name: Set up Python 3.13
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - name: Install Dependencies
+        if: steps.changes.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r src/requirements.txt
+      - name: Run Format & Lint
+        if: steps.changes.outputs.python == 'true'
+        run: ./ops/lint_py3.sh
+  py3-test:
+    name: "[py3] Test"
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        group: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            python:
+              - '**/*.py'
+              - '**/requirements.txt'
+              - '.test_durations'
+      - name: Set up Python 3.13
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - name: Install Dependencies
+        if: steps.changes.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r src/requirements.txt
+      - name: Run Tests
+        if: steps.changes.outputs.python == 'true'
+        run: ./ops/test_py3.sh --cov --splits 5 --group ${{ matrix.group }}
+      - name: Save coverage artifacts
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: coverage${{ matrix.group }}
+          path: .coverage
+          include-hidden-files: true
+  py3-coverage:
+    name: "[py3] Coverage"
+    runs-on: ubuntu-24.04
+    needs: [py3-test]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            python:
+              - '**/*.py'
+              - '**/requirements.txt'
+              - '.test_durations'
+      - name: Set up Python 3.13
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - name: Install Dependencies
+        if: steps.changes.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Download all artifacts
+        if: steps.changes.outputs.python == 'true'
+        uses: actions/download-artifact@v7
+      - name: Combine coverage
+        if: steps.changes.outputs.python == 'true'
+        run: |
+          coverage combine coverage*/.coverage*
+          coverage xml
+      - name: Upload coverage to Codecov
+        if: steps.changes.outputs.python == 'true'
+        uses: codecov/codecov-action@v5.5.2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: coverage.xml
+  node-lint:
+    name: "[node] Format & Lint"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            node:
+              - 'ops/**'
+              - 'src/**'
+              - 'package.json'
+      - name: Set up Node
+        if: steps.changes.outputs.node == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install Dependencies
+        if: steps.changes.outputs.node == 'true'
+        run: npm ci
+      - name: Run Format & Lint
+        if: steps.changes.outputs.node == 'true'
+        run: ./ops/lint_node.sh
+  node-test:
+    name: "[node] Test"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            node:
+              - 'ops/**'
+              - 'src/**'
+              - 'package.json'
+      - name: Set up Node
+        if: steps.changes.outputs.node == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install Dependencies
+        if: steps.changes.outputs.node == 'true'
+        run: npm ci
+      - name: Run Tests
+        if: steps.changes.outputs.node == 'true'
+        run: ./ops/test_node.sh
+      - name: Upload coverage to Codecov
+        if: steps.changes.outputs.node == 'true'
+        uses: codecov/codecov-action@v5.5.2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./.node_coverage/
+  pwa-lint:
+    name: "[pwa] Format & Lint"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.24.0"
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: "pwa/pnpm-lock.yaml"
+      - name: Create dotenv
+        run: ./ops/pwa/create_dotenv.sh --env
+        env:
+          TBA_API_READ_KEY: TEST_KEY
+      - name: Install Dependencies
+        run: pnpm --dir pwa install --frozen-lockfile
+      - name: Run Format
+        run: pnpm --dir pwa run format
+      - name: Run Lint
+        run: pnpm --dir pwa run lint
+  pwa-type:
+    name: "[pwa] Type Check"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.24.0"
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: "pwa/pnpm-lock.yaml"
+      - name: Create dotenv
+        run: ./ops/pwa/create_dotenv.sh --env
+        env:
+          TBA_API_READ_KEY: TEST_KEY
+      - name: Install Dependencies
+        run: pnpm --dir pwa install --frozen-lockfile
+      - name: Run Type Check
+        run: pnpm --dir pwa run typecheck
+  pwa-test:
+    name: "[pwa] Test"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.24.0"
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: "pwa/pnpm-lock.yaml"
+      - name: Install Dependencies
+        run: pnpm --dir pwa install --frozen-lockfile
+      - name: Create dotenv
+        run: ./ops/pwa/create_dotenv.sh --env
+        env:
+          TBA_API_READ_KEY: TEST_KEY
+      - name: Run Test
+        run: pnpm --dir pwa test
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5.5.2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./pwa/coverage/
+  pwa-build:
+    name: "[pwa] Build"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.24.0"
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: "pwa/pnpm-lock.yaml"
+      - name: Install Dependencies
+        run: pnpm --dir pwa install --frozen-lockfile
+      - name: Create dotenv
+        run: ./ops/pwa/create_dotenv.sh --env
+        env:
+          TBA_API_READ_KEY: TEST_KEY
+          FIREBASE_API_KEY: fake-api-key"
+          GCLOUD_PROJECT_ID: demo-test"
+      - name: Run Build
+        run: pnpm --dir pwa run build
+
+  pwa-e2e:
+    name: "[pwa] E2E Tests"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.24.0"
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: "pwa/pnpm-lock.yaml"
+
+      - name: Install Dependencies
+        working-directory: pwa
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pwa/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Browsers
+        working-directory: pwa
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Run Playwright tests
+        working-directory: pwa
+        run: pnpm exec playwright test
+        env:
+          VITE_TBA_API_READ_KEY: ${{ secrets.TBA_API_READ_KEY }}
+          VITE_FIREBASE_API_KEY: "fake-api-key"
+          VITE_FIREBASE_AUTH_DOMAIN: "demo-test"
+          VITE_FIREBASE_PROJECT_ID: "demo-test"
+
+  check-pwa-api:
+    name: "[pwa] Check API regeneration"
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.24.0"
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: "pwa/pnpm-lock.yaml"
+
+      - name: Create dotenv
+        run: ./ops/pwa/create_dotenv.sh --env
+        env:
+          TBA_API_READ_KEY: TEST_KEY
+
+      - name: Install Dependencies
+        working-directory: pwa
+        run: pnpm install --frozen-lockfile
+
+      - name: Run generate-api.sh
+        working-directory: ./pwa
+        run: ./generate-api.sh
+
+      - name: Detect changes in pwa/app/api
+        run: |
+          CHANGED_FILES=$(git diff --name-only pwa/app/api)
+          if [[ -n "$CHANGED_FILES" ]]; then
+            echo "::error title=API Mismatch::Files changed in pwa/app/api:"
+            echo "$CHANGED_FILES"
+            exit 1
+          else
+            echo "No changes detected in pwa/app/api."
+          fi
+
+  bash-lint:
+    name: "[bash] Lint"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - name: Install Shellcheck
+        run: |
+          python -m pip install --upgrade pip
+          pip install shellcheck-py
+      - name: Install shfmt
+        run: |
+          mkdir -p $HOME/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          wget "https://github.com/mvdan/sh/releases/download/v3.2.2/shfmt_v3.2.2_linux_amd64" -O $HOME/.local/bin/shfmt
+          chmod +x $HOME/.local/bin/shfmt
+      - name: Run Lint
+        run: ./ops/lint_bash.sh
+
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            buildweb:
+              - 'ops/**'
+              - 'src/**'
+              - 'package.json'
+              - 'requirements.txt'
+      - name: Set up Python 3.13
+        if: steps.changes.outputs.buildweb == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Set up Node
+        if: steps.changes.outputs.buildweb == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install Node Dependencies
+        if: steps.changes.outputs.buildweb == 'true'
+        run: npm ci
+      - name: Run Build
+        if: steps.changes.outputs.buildweb == 'true'
+        run: ./ops/build/run_buildweb.sh --env
+
+  ops-test:
+    name: Ops Fullstack Test
+    runs-on: ubuntu-24.04
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            web:
+              - 'ops/**'
+              - 'src/**'
+              - 'package.json'
+              - 'requirements.txt'
+      # See https://github.com/puppeteer/puppeteer/issues/12818
+      # Ubuntu 23+ doesn't like running puppeteer without disabling AppArmor.
+      - name: Disable AppArmor
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Set up Python 3.13
+        if: steps.changes.outputs.web == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - name: Install Python Dependencies
+        if: steps.changes.outputs.web == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Set up Node
+        if: steps.changes.outputs.web == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+      - name: Install Node Dependencies
+        if: steps.changes.outputs.web == 'true'
+        run: |
+          npm ci
+          npm install -g capture-website-cli
+      - name: Install Vagrant
+        if: steps.changes.outputs.web == 'true'
+        run: |
+          wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt update
+          sudo apt install vagrant
+      - name: Create keys file
+        if: steps.changes.outputs.web == 'true'
+        run: cp ./src/backend/web/static/javascript/tba_js/tba_keys_template.js ./src/backend/web/static/javascript/tba_js/tba_keys.js
+      - name: Set up Docker Buildx
+        if: steps.changes.outputs.web == 'true'
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+      - name: Build Docker Image
+        if: steps.changes.outputs.web == 'true'
+        uses: docker/build-push-action@v6.18.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: ./ops/dev/docker
+          push: true
+          tags: localhost:5000/tba-py3-dev:latest
+          cache-from: |
+            type=gha
+            ghcr.io/the-blue-alliance/the-blue-alliance/tba-py3-dev:latest
+          cache-to: type=gha,mode=max
+      - name: Start Container
+        if: steps.changes.outputs.web == 'true'
+        run: vagrant up
+      - name: Test Vagrant Startup
+        if: steps.changes.outputs.web == 'true'
+        run: ./ops/test_vagrant_startup.py || true
+      - name: Test Ops Fullstack
+        if: steps.changes.outputs.web == 'true'
+        run: ./ops/test_ops.sh || true
+      - name: Capture screenshots
+        if: steps.changes.outputs.web == 'true'
+        run: ./ops/pr_screenshots/capture_screenshots.py || true
+      - name: Upload screenshots artifact
+        if: steps.changes.outputs.web == 'true'
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: ci_screenshots
+          path: ci_screenshots.pickle

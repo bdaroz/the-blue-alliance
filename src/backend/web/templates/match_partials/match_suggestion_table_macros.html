@@ -1,0 +1,133 @@
+{% macro team_summary(team_details) %}
+  <div class="panel panel-default" style="margin: 0; padding: 16px; text-align: left;">
+    <h4>Team {{team_details.team.team_number}} - {{team_details.team.nickname}}</h4>
+    <p>{{team_details.team.city_state_country}}</p>
+    <p>Past Einstein: {% if team_details.past_einstein %}{% for year in team_details.past_einstein %}{{year}}{% if not loop.last%}, {% endif %}{% endfor %}{% else %}--{% endif %}</p>
+    <p>Auto Note cOPR: {% if team_details.events|length > 0 %}{{team_details.events[-1].auto_note_copr|round(2)}}{% else %}--{% endif %}</p>
+    <p>Teleop Note cOPR: {% if team_details.events|length > 0 %}{{team_details.events[-1].teleop_note_copr|round(2)}}{% else %}--{% endif %}</p>
+    <p>Trap cOPR: {% if team_details.events|length > 0 %}{{team_details.events[-1].trap_copr|round(2)}}{% else %}--{% endif %}</p>
+    {% for event in team_details.events %}
+        <p data-toggle="tooltip" data-placement="top" title="{{event.name}}">[{{event.event_short|upper}}]: {{event.alliance}} | {{event.finish}}</p>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+{% macro match_suggestion_table(matches, ranks, alliances, popular_team_keys, team_details) %}
+<table class="table match-table table-striped">
+  <thead>
+    <tr>
+      <th>Event</th>
+      <th>Match</th>
+      <th>Time<br>ETA</th>
+      <th>R1</th>
+      <th>R2</th>
+      <th>R3</th>
+      <th>R1 Rank (Alliance)</th>
+      <th>R2 Rank (Alliance)</th>
+      <th>R3 Rank (Alliance)</th>
+      <th>B1</th>
+      <th>B2</th>
+      <th>B3</th>
+      <th>B1 Rank (Alliance)</th>
+      <th>B2 Rank (Alliance)</th>
+      <th>B3 Rank (Alliance)</th>
+      <th>Red Predicted Score</th>
+      <th>Blue Predicted Score</th>
+      <th>Red Game Piece Power</th>
+      <th>Blue Game Piece Power</th>
+      <th>Red Endgame Power</th>
+      <th>Blue Endgame Power</th>
+      <th>BlueZone Score</th>
+      <th>Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for match in matches %}
+      <tr>
+        <td>{{match.event.id()[4:].upper()}}</td>
+        <td>{{match.short_name}}</td>
+        <td>
+          <time class="tba-match-time-utc" datetime="{{match.predicted_time.isoformat() if match.predicted_time else match.time.isoformat()}}+00:00">{{(match.predicted_time if match.predicted_time else match.time)|strftime("%a %I:%M%p UTC")}}</time>
+          <time class="tba-match-time-utc-countdown" datetime="{{match.predicted_time.isoformat() if match.predicted_time else match.time.isoformat()}}+00:00">--</time>
+        </td>
+        {% for team in match.alliances.red.teams %}
+        <td class="red{% if team in popular_team_keys %} current-team winner{% endif %}">
+          <svg class="favorite-team-dot" data-team="{{team}}" data-match="{{match.key_name}}">
+            <circle cx="2.5" cy="2.5" r="2.5"/>
+          </svg>
+          <a href="/team/{{team|strip_frc}}">{{team|strip_frc}}</a>
+        </td>
+        {% endfor %}
+        {% for team in match.alliances.red.teams %}
+        <td>{{ranks[team]}}{% if alliances[team] %} ({{alliances[team]}}){% endif %}</td>
+        {% endfor %}
+        {% for team in match.alliances.blue.teams %}
+        <td class="blue{% if team in popular_team_keys %} current-team winner{% endif %}">
+          <svg class="favorite-team-dot" data-team="{{team}}" data-match="{{match.key_name}}">
+            <circle cx="2.5" cy="2.5" r="2.5"/>
+          </svg>
+          <a href="/team/{{team|strip_frc}}">{{team|strip_frc}}</a>
+        </td>
+        {% endfor %}
+        {% for team in match.alliances.blue.teams %}
+        <td>{{ranks[team]}}{% if alliances[team] %} ({{alliances[team]}}){% endif %}</td>
+        {% endfor %}
+        <td class="red">{{match.prediction.red.score|round|int}}</td>
+        <td class="blue">{{match.prediction.blue.score|round|int}}</td>
+        <td>
+          <div class="progress" style="margin: 0px;">
+            <div class="progress-bar progress-bar-info" role="progressbar" style="width: {{match.prediction.red.note_scored/30*100}}%; color: black;">
+              {{(match.prediction.red.note_scored|round(1))}}
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="progress" style="margin: 0px;">
+            <div class="progress-bar progress-bar-info" role="progressbar" style="width: {{match.prediction.blue.note_scored/30*100}}%; color: black;">
+              {{(match.prediction.blue.note_scored|round(1))}}
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="progress" style="margin: 0px;">
+            <div class="progress-bar progress-bar-info" role="progressbar" style="width: {{(match.prediction.red.stage_points/15*100)}}%; color: black;">
+              {{(match.prediction.red.stage_points|round(1))}}
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="progress" style="margin: 0px;">
+            <div class="progress-bar progress-bar-info" role="progressbar" style="width: {{(match.prediction.blue.stage_points/15*100)}}%; color: black;">
+              {{(match.prediction.blue.stage_points|round(1))}}
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="progress" style="margin: 0px;">
+            <div class="progress-bar {% if match.bluezone_score < 30 %}progress-bar-danger{% elif match.bluezone_score < 50 %}progress-bar-warning{% else %}progress-bar-success{% endif %}" role="progressbar" style="width: {{match.bluezone_score}}%; color: black;">
+              {{match.bluezone_score|round|int}}
+            </div>
+          </div>
+        </td>
+        <td>
+          <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#{{match.key.id()}}">
+            +
+          </button>
+        </td>
+      </tr>
+      <tr class="collapse" id="{{match.key.id()}}">
+        <td colspan="23">
+          <div style="display: flex; justify-content: space-between;">
+            {% for team in match.alliances.red.teams %}
+              {{ team_summary(team_details.get(team)) }}
+            {% endfor %}
+            {% for team in match.alliances.blue.teams %}
+              {{ team_summary(team_details.get(team)) }}
+            {% endfor %}
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}

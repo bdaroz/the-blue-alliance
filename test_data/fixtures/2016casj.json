@@ -1,6 +1,5 @@
 [
   {
-    "event_district_enum": 0,
     "updated": "2016-12-21T05:58:24",
     "event_type_enum": 0,
     "year": 2016,
@@ -28,7 +27,8 @@
     "official": true,
     "venue": "San Jose State University - The Event Center",
     "webcast_json": "[{\"type\": \"youtube\", \"channel\": \"hBEgC-lZ36Q\"}, {\"type\": \"youtube\", \"channel\": \"QDtyONxuFZY\"}, {\"type\": \"youtube\", \"channel\": \"nMbcgqc7QnY\"}, {\"type\": \"youtube\", \"channel\": \"nnBQ3E167ig\"}, {\"type\": \"youtube\", \"channel\": \"xCdWi6Uhomo\"}, {\"type\": \"youtube\", \"channel\": \"cGe8wdbfl_E\"}]",
-    "district_key": null
+    "district_key": null,
+    "playoff_type": 0
   },
   {
     "comp_level": "f",

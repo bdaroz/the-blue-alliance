@@ -1,0 +1,20 @@
+import { type ComponentPropsWithoutRef, forwardRef } from 'react';
+
+import { cn } from '~/lib/utils';
+
+const Divider = forwardRef<HTMLSpanElement, ComponentPropsWithoutRef<'span'>>(
+  ({ className, children }, ref) => (
+    <span className={cn('relative flex justify-center', className)} ref={ref}>
+      <div
+        className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2
+          bg-transparent bg-gradient-to-r from-transparent via-border
+          to-transparent opacity-75"
+      ></div>
+
+      <span className="relative z-10 bg-white px-6">{children}</span>
+    </span>
+  ),
+);
+Divider.displayName = 'Divider';
+
+export { Divider };

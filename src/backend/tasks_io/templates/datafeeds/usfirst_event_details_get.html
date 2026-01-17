@@ -1,0 +1,41 @@
+<h2>Got an Event</h2>
+<ul>
+    <li>Type: {{event.event_type_str}}</li>
+    <li>District: {{event.district_key}}</li>
+    <li>Name: {{event.name}}</li>
+    <li>Short Name: {{event.short_name}}</li>
+    <li>Event Short: {{event.event_short}}</li>
+    <li>Year: {{event.year}}</li>
+    <li>FIRST eid: {{event.first_eid}}</li>
+    <li>Venue: {{event.venue}}</li>
+    <li>Venue Address: {{event.venue_address}}</li>
+    <li>City: {{event.city}}</li>
+    <li>State/Prov: {{event.state_prov}}</li>
+    <li>Postal Code: {{event.postalcode}}</li>
+    <li>Country: {{event.country}}</li>
+    <li>Timezone ID: {{event.timezone_id}}</li>
+    <li>Starts on: {{event.start_date}}</li>
+    <li>Ends on: {{event.end_date}}</li>
+    <li>Website: {{event.website}}</li>
+    <li>Playoff type: {{event.playoff_type}}</li>
+    <li>Teams: {{event_teams|length}} registered - {% for event_team in event_teams %}{{event_team.team.id()}} {% endfor %}</li>
+</ul>
+
+<h3>Other Models</h3>
+<p><b>DistrictTeams:</b> {% for dt in district_teams %}{{dt.key.string_id()}} {%endfor%}</p>
+<p><b>RegionalPoolTeams:</b> {% for rpt in regional_pool_teams %}{{rpt.key.string_id()}} {%endfor%}</p>
+<p><b>Nexus Pit Locations:</b></p>
+<table>
+    <tr>
+        <th>Team</th>
+        <th>Pit Location</th>
+    </tr>
+    {% for et in event_teams %}
+        {% if et.pit_location %}
+            <tr>
+                <td>{{et.team.id()}}</td>
+                <td><pre>{{et.pit_location}}</pre></td>
+            </tr>
+        {% endif %}
+    {% endfor %}
+</table>

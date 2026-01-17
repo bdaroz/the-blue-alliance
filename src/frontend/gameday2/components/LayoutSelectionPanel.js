@@ -1,0 +1,126 @@
+import React from "react";
+import PropTypes from "prop-types";
+import Paper from "@mui/material/Paper";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemText from "@mui/material/ListItemText";
+import ListItemSecondaryAction from "@mui/material/ListItemSecondaryAction";
+// Replaced react-event-listener with native window event listeners
+import { getLayoutSvgIcon } from "../utils/layoutUtils";
+import {
+  NUM_LAYOUTS,
+  LAYOUT_DISPLAY_ORDER,
+  NAME_FOR_LAYOUT,
+} from "../constants/LayoutConstants";
+
+export default class LayoutSelectionPanelMaterial extends React.Component {
+  static propTypes = {
+    setLayout: PropTypes.func.isRequired,
+  };
+
+  constructor(props) {
+    super(props);
+
+    this.layout = {
+      margin: 20,
+    };
+    this._boundUpdateSizing = this.updateSizing.bind(this);
+  }
+  componentDidMount() {
+    this.updateSizing();
+    window.addEventListener("resize", this._boundUpdateSizing);
+  }
+
+  componentDidUpdate() {
+    this.updateSizing();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener("resize", this._boundUpdateSizing);
+  }
+
+  updateSizing() {
+    const component = this.component;
+    const listContainer = this.listContainer;
+    const list = this.list;
+
+    let height = 0;
+    height += list.offsetHeight;
+    height += listContainer.previousSibling.offsetHeight;
+
+    const maxHeight = component.offsetHeight - 2 * this.layout.margin;
+    if (height > maxHeight) {
+      let listContainerHeight = maxHeight;
+      listContainerHeight -= listContainer.previousSibling.offsetHeight;
+      listContainer.style.height = `${listContainerHeight}px`;
+      listContainer.style.overflowY = "auto";
+    } else {
+      listContainer.style.height = null;
+    }
+  }
+
+  render() {
+    const layouts = [];
+    for (let i = 0; i < NUM_LAYOUTS; i++) {
+      const layoutNum = LAYOUT_DISPLAY_ORDER[i];
+      layouts.push(
+        <ListItem
+          button
+          onClick={() => this.props.setLayout(layoutNum)}
+          key={i.toString()}
+        >
+          <ListItemText primary={NAME_FOR_LAYOUT[layoutNum]} />
+          <ListItemSecondaryAction>
+            {getLayoutSvgIcon(layoutNum)}
+          </ListItemSecondaryAction>
+        </ListItem>
+      );
+    }
+
+    const componentStyle = {
+      width: "100%",
+      height: "100%",
+    };
+
+    const containerStyles = {
+      width: "300px",
+      maxWidth: "100%",
+      margin: "auto",
+      marginTop: `${this.layout.margin}px`,
+    };
+
+    const titleStyle = {
+      padding: "16px",
+      fontSize: "22px",
+      margin: 0,
+      fontWeight: 400,
+      borderBottom: "1px solid rgb(224, 224, 224)",
+    };
+
+    return (
+      <div
+        style={componentStyle}
+        ref={(e) => {
+          this.component = e;
+        }}
+      >
+        <Paper style={containerStyles}>
+          <h3 style={titleStyle}>Select a layout</h3>
+          <div
+            ref={(e) => {
+              this.listContainer = e;
+            }}
+          >
+            <div
+              ref={(e) => {
+                this.list = e;
+              }}
+            >
+              <List>{layouts}</List>
+            </div>
+          </div>
+        </Paper>
+      </div>
+    );
+  }
+}

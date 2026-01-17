@@ -1,0 +1,42 @@
+import pytest
+from google.appengine.ext import testbed
+from werkzeug.test import Client
+
+from backend.common.helpers.deferred import run_from_task
+from backend.common.sitevars.fms_api_secrets import (
+    ContentType as FMSApiSecretsContentType,
+    FMSApiSecrets,
+)
+from backend.common.sitevars.nexus_api_secret import (
+    ContentType as NexusApiSecretsContentType,
+    NexusApiSecrets,
+)
+
+
+@pytest.fixture(autouse=True)
+def always_drain_taskqueue(
+    tasks_client: Client, taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub
+):
+    yield
+    deferred_queues = ["datafeed", "cache-clearing", "post-update-hooks"]
+    for queue in deferred_queues:
+        tasks = taskqueue_stub.get_filtered_tasks(queue_names=queue)
+        for task in tasks:
+            if task.payload:
+                run_from_task(task)
+
+    get_queues = ["default", "run-in-order"]
+    for queue in get_queues:
+        tasks = taskqueue_stub.get_filtered_tasks(queue_names=queue)
+        for task in tasks:
+            tasks_client.get(task.url)
+
+
+@pytest.fixture(autouse=True)
+def fms_api_secrets(ndb_stub):
+    FMSApiSecrets.put(FMSApiSecretsContentType(username="zach", authkey="authkey"))
+
+
+@pytest.fixture(autouse=True)
+def nexus_api_secrets(ndb_stub):
+    NexusApiSecrets.put(NexusApiSecretsContentType(api_secret="authkey"))

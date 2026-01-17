@@ -1,0 +1,198 @@
+from datetime import datetime, timedelta
+
+import pytest
+from pytz import timezone, UTC
+
+from backend.common.consts.event_type import EventType
+from backend.common.helpers.season_helper import SeasonHelper
+from backend.common.models.event import Event
+
+
+EST = timezone("US/Eastern")
+
+
+def test_kickoff_datetime() -> None:
+    # For folks looking at this test later to confirm everything is right
+    # 2026 = Jan 10th
+    # 2025 = Jan 4th
+    # 2024 = Jan 6th
+    # 2023 = Jan 7th
+    # 2022 = Jan 8th
+    # 2021 = Jan 9th
+    # 2020 = Jan 4th
+    # 2019 = Jan 5th
+    # 2018 = Jan 6th
+    # 2017 = Jan 7th
+    # 2016 = Jan 9th
+    # 2015 = Jan 3rd
+    # 2014 = Jan 4th
+    # 2013 = Jan 5th
+    # 2012 = Jan 7th
+    # 2011 = Jan 8th
+    # 2010 = Jan 9th
+    # 2009 = Jan 3rd
+    # 2008 = Jan 5th
+    # 2007 = Jan 6th
+    # 2006 = Jan 7th
+    # 2005 = Jan 8th
+    # After this, things start to get hard to confirm online
+    # I'm sure I could dig through Chief posts
+    # ~zach
+
+    # 2026 - Saturday the 10th, 12:00pm (noon) EST
+    kickoff_2026 = EST.localize(datetime(2026, 1, 10, 12, 00, 00))
+    kickoff_2026_utc = kickoff_2026.astimezone(UTC)
+    assert SeasonHelper.kickoff_datetime_est(year=2026) == kickoff_2026
+    assert SeasonHelper.kickoff_datetime_utc(year=2026) == kickoff_2026_utc
+
+    # 2021 - Saturday the 9th, 12:00pm (noon) EST (https://www.firstinspires.org/robotics/frc/blog/2021-kickoff)
+    kickoff_2021 = EST.localize(datetime(2021, 1, 9, 12, 00, 00))
+    kickoff_2021_utc = kickoff_2021.astimezone(UTC)
+    assert SeasonHelper.kickoff_datetime_est(year=2021) == kickoff_2021
+    assert SeasonHelper.kickoff_datetime_utc(year=2021) == kickoff_2021_utc
+
+    # 2020 - Saturday the 4th, 10:30am EST (https://www.firstinspires.org/robotics/frc/blog/2020-kickoff-downloads)
+    kickoff_2020 = EST.localize(datetime(2020, 1, 4, 10, 30, 00))
+    kickoff_2020_utc = kickoff_2020.astimezone(UTC)
+    assert SeasonHelper.kickoff_datetime_est(year=2020) == kickoff_2020
+    assert SeasonHelper.kickoff_datetime_utc(year=2020) == kickoff_2020_utc
+
+    # 2019 - Saturday the 5th, 10:30am EST (https://en.wikipedia.org/wiki/Logo_Motion)
+    kickoff_2019 = EST.localize(datetime(2019, 1, 5, 10, 30, 00))
+    kickoff_2019_utc = kickoff_2019.astimezone(UTC)
+    assert SeasonHelper.kickoff_datetime_est(year=2019) == kickoff_2019
+    assert SeasonHelper.kickoff_datetime_utc(year=2019) == kickoff_2019_utc
+
+    # 2010 - Saturday the 9th, 10:30am EST (https://en.wikipedia.org/wiki/Breakaway_(FIRST))
+    kickoff_2010 = EST.localize(datetime(2010, 1, 9, 10, 30, 00))
+    kickoff_2010_utc = kickoff_2010.astimezone(UTC)
+    assert SeasonHelper.kickoff_datetime_est(year=2010) == kickoff_2010
+    assert SeasonHelper.kickoff_datetime_utc(year=2010) == kickoff_2010_utc
+
+
+@pytest.mark.parametrize(
+    "date, expected",
+    [
+        (datetime(2020, 1, 3, 14, 30, 00, tzinfo=UTC), False),  # False - over one day
+        (datetime(2020, 1, 3, 15, 30, 00, tzinfo=UTC), True),  # True - exactly one day
+        (datetime(2020, 1, 4, 15, 30, 00, tzinfo=UTC), True),  # True - same time
+        (
+            datetime(2020, 2, 4, 15, 30, 00, tzinfo=UTC),
+            True,
+        ),  # True - very far away in the future
+    ],
+)
+def test_is_kickoff_at_least_one_day_away(date, expected) -> None:
+    at_least_one_day_away = SeasonHelper.is_kickoff_at_least_one_day_away(date, 2020)
+    assert at_least_one_day_away == expected
+
+
+def test_effective_season_year_no_events(ndb_stub) -> None:
+    now = datetime.now()
+    effective_season_year = SeasonHelper.effective_season_year()
+
+    assert effective_season_year == now.year
+
+
+def test_effective_season_year_this_year(ndb_stub) -> None:
+    # Effective season should be this year
+    today = datetime.today()
+    Event(
+        id="{}testendstomorrow".format(today.year),
+        event_short="Ends Tomorrow",
+        start_date=today,
+        end_date=today + timedelta(days=1),
+        event_type_enum=EventType.REGIONAL,
+        year=today.year,
+    ).put()
+    effective_season_year = SeasonHelper.effective_season_year()
+
+    assert effective_season_year == today.year
+
+
+def test_effective_season_year_next_year(ndb_stub) -> None:
+    # Effective season should be next year
+    today = datetime.today()
+    Event(
+        id="{}testended".format(today.year),
+        event_short="Test Ended",
+        start_date=today - timedelta(days=2),
+        end_date=today - timedelta(days=1),
+        event_type_enum=EventType.REGIONAL,
+        year=today.year,
+    ).put()
+    effective_season_year = SeasonHelper.effective_season_year()
+
+    assert effective_season_year == today.year + 1
+
+
+def test_effective_season_year_next_year_ignore_non_official(
+    ndb_stub,
+) -> None:
+    # Effective season should be next year
+    today = datetime.today()
+    # Insert an event that has already happened - otherwise we'll default to the current season
+    # This is to simulate offseason
+    Event(
+        id="{}testended".format(today.year),
+        event_short="Test Ended",
+        start_date=today - timedelta(days=2),
+        end_date=today - timedelta(days=1),
+        event_type_enum=EventType.REGIONAL,
+        year=today.year,
+    ).put()
+    Event(
+        id="{}testendstomorrow".format(today.year),
+        event_short="testendstomorrow",
+        start_date=today,
+        end_date=today + timedelta(days=1),
+        event_type_enum=EventType.OFFSEASON,
+        year=today.year,
+    ).put()
+    effective_season_year = SeasonHelper.effective_season_year()
+
+    assert effective_season_year == today.year + 1
+
+
+def test_first_event_datetime_no_events(ndb_stub) -> None:
+    first_event_datetime = SeasonHelper.first_event_datetime_utc()
+
+    assert first_event_datetime is None
+
+
+def test_first_event_datetime_one_event(ndb_stub) -> None:
+    start_date = datetime(2020, 3, 1)
+    Event(
+        id="{}testfirst".format(start_date.year),
+        event_short="First Event",
+        start_date=start_date,
+        end_date=start_date + timedelta(days=1),
+        event_type_enum=EventType.REGIONAL,
+        year=start_date.year,
+    ).put()
+    first_event_datetime = SeasonHelper.first_event_datetime_utc(start_date.year)
+
+    assert first_event_datetime == start_date
+
+
+def test_first_event_datetime_multiple_events(ndb_stub) -> None:
+    start_date = datetime(2020, 3, 1)
+    Event(
+        id="{}testfirst".format(start_date.year),
+        event_short="First Event",
+        start_date=start_date,
+        end_date=start_date + timedelta(days=1),
+        event_type_enum=EventType.REGIONAL,
+        year=start_date.year,
+    ).put()
+    Event(
+        id="{}testsecond".format(start_date.year),
+        event_short="Second Event",
+        start_date=start_date + timedelta(days=1),
+        end_date=start_date + timedelta(days=2),
+        event_type_enum=EventType.REGIONAL,
+        year=start_date.year,
+    ).put()
+    first_event_datetime = SeasonHelper.first_event_datetime_utc(start_date.year)
+
+    assert first_event_datetime == start_date

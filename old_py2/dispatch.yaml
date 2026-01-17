@@ -1,0 +1,43 @@
+dispatch:
+# Start serving certain pages from py3
+- url: "www.thebluealliance.com/"  # Just the homepage
+  service: py3-web
+
+- url: "www.thebluealliance.com/about"
+  service: py3-web
+
+# Python 3 Migration
+- url: "py3.thebluealliance.com/api/*"
+  service: py3-api
+
+- url: "py3.thebluealliance.com/*"
+  service: py3-web
+
+# Beta PWA
+- url: "beta.thebluealliance.com/*"
+  service: pwa-ssr
+
+# Public API
+- url: "*/api/v3/*"
+  service: api
+
+# Send low-frequency long-running tasks to backend module
+- url: "*/backend-tasks/*"
+  service: backend-tasks
+
+# Send low-frequency long-running tasks to backend module
+# Uses B2 instance for higher CPU/memory limits
+- url: "*/backend-tasks-b2/*"
+  service: backend-tasks-b2
+
+# Endpoints for internal client API
+- url: "*/clientapi/*"
+  service: clientapi
+
+# Handles latency-insensive tasks
+- url: "*/tasks/*"
+  service: tasks
+
+# Send everything else to default module
+- url: "*/"
+  service: default

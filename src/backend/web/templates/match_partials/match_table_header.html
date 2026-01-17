@@ -1,0 +1,39 @@
+<tr class="key visible-lg">
+  <th>
+    {% if playlist %}<a href="{{playlist}}" title="Watch all videos"
+      ><span class="glyphicon glyphicon-play-circle"></span></a
+    >{% else %}
+    <span
+      class="glyphicon glyphicon-play-circle"
+      rel="tooltip"
+      title="Matches with the play icon have videos to watch"
+    ></span>
+    {% endif %}
+  </th>
+
+  <th>Match</th>
+  <th colspan="6">Red Alliance</th>
+  <th colspan="6">Blue Alliance</th>
+  <th colspan="2">Scores</th>
+</tr>
+
+<tr class="key hidden-lg">
+  <th rowspan="2">
+    {% if playlist %}<a href="{{playlist}}" title="Watch all videos"
+      ><span class="glyphicon glyphicon-play-circle"></span></a
+    >{% else %}
+    <span
+      class="glyphicon glyphicon-play-circle"
+      rel="tooltip"
+      title="Matches with the play icon have videos to watch"
+    ></span>
+    {% endif %}
+  </th>
+  <th rowspan="2">Match</th>
+  <th colspan="12">Red Alliance</th>
+  <th colspan="2">Red Score</th>
+</tr>
+<tr class="key hidden-lg">
+  <th colspan="12">Blue Alliance</th>
+  <th colspan="2">Blue Score</th>
+</tr>

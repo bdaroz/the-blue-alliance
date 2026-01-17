@@ -1,0 +1,608 @@
+import datetime
+import json
+from typing import Dict, Optional
+
+import pytest
+import requests
+import requests_mock
+import six
+from firebase_admin import exceptions as firebase_exceptions
+from freezegun import freeze_time
+from google.appengine.ext import ndb, testbed
+from pyre_extensions import none_throws
+
+from backend.common.consts.event_type import EventType
+from backend.common.consts.webcast_type import WebcastType
+from backend.common.helpers.deferred import run_from_task
+from backend.common.helpers.firebase_pusher import FirebasePusher
+from backend.common.models.district import District
+from backend.common.models.event import Event
+from backend.common.models.event_queue_status import (
+    EventQueueStatus,
+    NexusCurrentlyQueueing,
+    NexusMatch,
+    NexusMatchStatus,
+    NexusMatchTiming,
+)
+from backend.common.models.match import Match
+from backend.common.models.webcast import Webcast
+from backend.common.sitevars.gameday_special_webcasts import (
+    ContentType as TSpecialWebcasts,
+    GamedaySpecialWebcasts,
+    WebcastType as TSpecialWebcast,
+)
+
+
+class InMemoryRealtimeDb:
+    """
+    A very naive implementation of the firebase realtime db's REST API
+    Since the firebase_admin SDK uses requests internally, we can hook this up
+    https://firebase.google.com/docs/reference/rest/database
+    """
+
+    # a map of path -> data
+    data: Dict[str, bytes]
+
+    def __init__(self) -> None:
+        self.data = {}
+
+    def __call__(self, request: "requests_mock.Request") -> requests.Response:
+        if request.method == "GET":
+            data = self.data.get(request.path)
+            if data is None:
+                return self._make_response(404, b"not found")
+            return self._make_response(200, data)
+        elif request.method == "PUT":
+            body = six.ensure_binary(none_throws(request.body))
+            self.data[request.path] = body
+            return self._make_response(200, body)
+        elif request.method == "PATCH":
+            body = six.ensure_binary(none_throws(request.body))
+            return self._patch(request.path, body)
+        elif request.method == "DELETE":
+            return self._delete(request.path)
+
+        return self._make_response(400, f"not implemented {request.method}".encode())
+
+    """
+    These helpers functions are real ugly (and don't work with greater depth of what
+    we are already using). Someday we can rewrite them to be "correct" and completely
+    recursive. Until then, this is fine...
+    """
+
+    def _patch(
+        self, path: str, body: bytes, prefix: Optional[str] = None
+    ) -> requests.Response:
+        if prefix is None and path in self.data:
+            existing_data = json.loads(self.data[path])
+            existing_data.update(json.loads(body))
+            self.data[path] = json.dumps(existing_data).encode()
+            return self._make_response(200, body)
+
+        if prefix:
+            prefix_data = json.loads(self.data[prefix])
+            if path in prefix_data:
+                new_body = json.loads(body)
+                updated_data = prefix_data.get(path, {})
+                updated_data.update(new_body)
+                prefix_data[path] = updated_data
+                self.data[prefix] = json.dumps(prefix_data).encode()
+                return self._make_response(200, body)
+
+        clean_path = path.rstrip(".json")
+        for prefix in self.data.keys():
+            original_prefix = prefix
+            if prefix.endswith(".json"):
+                prefix = prefix.replace(".json", "")
+
+            if prefix in path:
+                remaining_path = clean_path.replace(prefix, "")
+                if remaining_path.startswith("/"):
+                    remaining_path = remaining_path[1:]
+                return self._patch(remaining_path, body, prefix=original_prefix)
+
+        self.data[path] = body
+        return self._make_response(200, body)
+
+    def _delete(self, path: str, prefix: Optional[str] = None) -> requests.Response:
+        if path in self.data:
+            self.data.pop(path, None)
+            return self._make_response(200, b"null")
+
+        if prefix:
+            prefix_data = json.loads(self.data[prefix])
+            if path in prefix_data:
+                prefix_data.pop(path)
+                self.data[prefix] = json.dumps(prefix_data).encode()
+                return self._make_response(200, b"null")
+            else:
+                path_split = path.split("/")
+                if (
+                    path_split[0] in prefix_data
+                    and path_split[1] in prefix_data[path_split[0]]
+                ):
+                    del prefix_data[path_split[0]][path_split[1]]
+                self.data[prefix] = json.dumps(prefix_data).encode()
+                return self._make_response(200, b"null")
+
+        clean_path = path.rstrip(".json")
+        for prefix in self.data.keys():
+            original_prefix = prefix
+            if prefix.endswith(".json"):
+                prefix = prefix.replace(".json", "")
+
+            if prefix in path:
+                remaining_path = clean_path.replace(prefix, "")
+                if remaining_path.startswith("/"):
+                    remaining_path = remaining_path[1:]
+                return self._delete(remaining_path, prefix=original_prefix)
+
+        return self._make_response(200, b"null")
+
+    def _make_response(self, status: int, data: bytes) -> requests.Response:
+        resp = requests.Response()
+        resp.status_code = status
+        resp._content = data
+        return resp
+
+
+@pytest.fixture(autouse=True)
+def auto_add_stubs(
+    ndb_stub, requests_mock: requests_mock.Mocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # firebase_admin uses `requests` internally
+    monkeypatch.setenv("FIREBASE_DATABASE_EMULATOR_HOST", "localhost:9070")
+
+    db = InMemoryRealtimeDb()
+    requests_mock.add_matcher(db)
+
+
+def drain_deferred(taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub) -> None:
+    for task in taskqueue_stub.get_filtered_tasks(queue_names="firebase"):
+        run_from_task(task)
+
+
+def test_update_live_events_none(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    FirebasePusher.update_live_events(events={}, special_webcasts=[])
+    drain_deferred(taskqueue_stub)
+
+    assert FirebasePusher._get_reference("live_events").get() == {}
+    assert FirebasePusher._get_reference("special_webcasts").get() == []
+
+
+@freeze_time("2020-04-01")
+def test_update_live_event(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    e = Event(
+        id="2020nyny",
+        year=2020,
+        event_short="nyny",
+        event_type_enum=EventType.REGIONAL,
+        start_date=datetime.datetime(2020, 4, 1),
+        end_date=datetime.datetime(2020, 4, 1),
+        name="Test Event",
+        short_name="Test",
+    )
+
+    FirebasePusher.update_live_events(events={e.key_name: e}, special_webcasts=[])
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "2020nyny": {
+            "key": "2020nyny",
+            "name": "Test Event",
+            "short_name": "Test",
+            "webcasts": [],
+        }
+    }
+    assert FirebasePusher._get_reference("live_events").get() == expected
+
+
+@freeze_time("2020-04-01")
+def test_update_live_event_with_webcast(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    e = Event(
+        id="2020nyny",
+        year=2020,
+        event_short="nyny",
+        event_type_enum=EventType.REGIONAL,
+        start_date=datetime.datetime(2020, 4, 1),
+        end_date=datetime.datetime(2020, 4, 1),
+        name="Test Event",
+        short_name="Test",
+        webcast_json=json.dumps(
+            [Webcast(type=WebcastType.TWITCH, channel="tbagameday")]
+        ),
+    )
+
+    FirebasePusher.update_live_events(events={e.key_name: e}, special_webcasts=[])
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "2020nyny": {
+            "key": "2020nyny",
+            "name": "Test Event",
+            "short_name": "Test",
+            "webcasts": [
+                {
+                    "type": WebcastType.TWITCH,
+                    "channel": "tbagameday",
+                }
+            ],
+        }
+    }
+    assert FirebasePusher._get_reference("live_events").get() == expected
+
+
+@freeze_time("2020-04-01")
+def test_update_live_district_event(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    e = Event(
+        id="2020nyny",
+        year=2020,
+        event_short="nyny",
+        event_type_enum=EventType.REGIONAL,
+        start_date=datetime.datetime(2020, 4, 1),
+        end_date=datetime.datetime(2020, 4, 1),
+        name="Test Event",
+        short_name="Test",
+        district_key=ndb.Key(District, "2020ne"),
+    )
+
+    FirebasePusher.update_live_events(events={e.key_name: e}, special_webcasts=[])
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "2020nyny": {
+            "key": "2020nyny",
+            "name": "Test Event",
+            "short_name": "[NE] Test",
+            "webcasts": [],
+        }
+    }
+    assert FirebasePusher._get_reference("live_events").get() == expected
+
+
+@freeze_time("2020-04-01")
+def test_patch_live_event_queue_status(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    e = Event(
+        id="2020nyny",
+        year=2020,
+        event_short="nyny",
+        event_type_enum=EventType.REGIONAL,
+        start_date=datetime.datetime(2020, 4, 1),
+        end_date=datetime.datetime(2020, 4, 1),
+        name="Test Event",
+        short_name="Test",
+    )
+    e.put()
+    nexus_status = EventQueueStatus(
+        data_as_of_ms=0,
+        now_queueing=NexusCurrentlyQueueing(
+            match_key="2020nyny_qm1",
+            match_name="Quals 1",
+        ),
+        matches={},
+    )
+
+    FirebasePusher.update_live_events(events={e.key_name: e}, special_webcasts=[])
+    drain_deferred(taskqueue_stub)
+
+    FirebasePusher.update_event_queue_status(e, nexus_status)
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "2020nyny": {
+            "key": "2020nyny",
+            "name": "Test Event",
+            "short_name": "Test",
+            "webcasts": [],
+            "now_queuing": {
+                "key": "2020nyny_qm1",
+                "name": "Quals 1",
+            },
+        }
+    }
+    assert FirebasePusher._get_reference("live_events").get() == expected
+
+
+@freeze_time("2020-04-01")
+def test_patch_live_event_queue_status_deletes_when_nothing_queued(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    e = Event(
+        id="2020nyny",
+        year=2020,
+        event_short="nyny",
+        event_type_enum=EventType.REGIONAL,
+        start_date=datetime.datetime(2020, 4, 1),
+        end_date=datetime.datetime(2020, 4, 1),
+        name="Test Event",
+        short_name="Test",
+    )
+    e.put()
+    nexus_status = EventQueueStatus(
+        data_as_of_ms=0,
+        now_queueing=NexusCurrentlyQueueing(
+            match_key="2020nyny_qm1",
+            match_name="Quals 1",
+        ),
+        matches={},
+    )
+    nexus_status2 = EventQueueStatus(
+        data_as_of_ms=0,
+        now_queueing=None,
+        matches={},
+    )
+
+    FirebasePusher.update_live_events(events={e.key_name: e}, special_webcasts=[])
+    drain_deferred(taskqueue_stub)
+
+    FirebasePusher.update_event_queue_status(e, nexus_status)
+    drain_deferred(taskqueue_stub)
+
+    FirebasePusher.update_event_queue_status(e, nexus_status2)
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "2020nyny": {
+            "key": "2020nyny",
+            "name": "Test Event",
+            "short_name": "Test",
+            "webcasts": [],
+        }
+    }
+    assert FirebasePusher._get_reference("live_events").get() == expected
+
+
+def test_update_special_webcast(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    data: TSpecialWebcasts = {
+        "default_chat": "tbagameday",
+        "webcasts": [
+            TSpecialWebcast(
+                type=WebcastType.TWITCH,
+                channel="tbagameday",
+                name="TBA Gameday",
+                key_name="tbagameday",
+            )
+        ],
+        "aliases": {},
+    }
+    GamedaySpecialWebcasts.put(data)
+
+    FirebasePusher.update_live_events(events={}, special_webcasts=data["webcasts"])
+    drain_deferred(taskqueue_stub)
+
+    expected = [
+        TSpecialWebcast(
+            type=WebcastType.TWITCH,
+            channel="tbagameday",
+            name="TBA Gameday",
+            key_name="tbagameday",
+        )
+    ]
+    assert FirebasePusher._get_reference("special_webcasts").get() == expected
+
+
+def test_update_match(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    match = Match(
+        id="2018ct_qm1",
+        alliances_json="""{"blue": {"score": 57, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": 74, "teams": ["frc69", "frc571", "frc176"]}}""",
+        comp_level="qm",
+        event=ndb.Key(Event, "2018ct"),
+        year=2018,
+        set_number=1,
+        match_number=1,
+    )
+
+    FirebasePusher.update_match(match, set())
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "c": "qm",
+        "s": 1,
+        "m": 1,
+        "r": 74,
+        "rt": ["frc69", "frc571", "frc176"],
+        "b": 57,
+        "bt": ["frc3464", "frc20", "frc1073"],
+        "t": None,
+        "pt": None,
+        "w": "red",
+    }
+    assert FirebasePusher._get_reference("e/2018ct/m/qm1").get() == expected
+
+
+def test_update_match_skips_pre_2017(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    match = Match(
+        id="2016ct_qm1",
+        alliances_json="""{"blue": {"score": 57, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": 74, "teams": ["frc69", "frc571", "frc176"]}}""",
+        comp_level="qm",
+        event=ndb.Key(Event, "2016ct"),
+        year=2016,
+        set_number=1,
+        match_number=1,
+    )
+
+    FirebasePusher.update_match(match, set())
+    drain_deferred(taskqueue_stub)
+
+    with pytest.raises(firebase_exceptions.NotFoundError):
+        FirebasePusher._get_reference("e/2016ct/m/qm1").get()
+
+
+def test_update_match_merges_predicted_time(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    match = Match(
+        id="2018ct_qm1",
+        alliances_json="""{"blue": {"score": 57, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": 74, "teams": ["frc69", "frc571", "frc176"]}}""",
+        comp_level="qm",
+        event=ndb.Key(Event, "2018ct"),
+        year=2018,
+        set_number=1,
+        match_number=1,
+    )
+
+    FirebasePusher.update_match(match, set())
+    drain_deferred(taskqueue_stub)
+
+    # Make a change to the alliance dict, so that the test will fail we it not for the hack
+    predicted_time = datetime.datetime(2018, 4, 1, 10, 0, 0)
+    match.predicted_time = predicted_time
+    match.alliances_json = """{"blue": {"score": -1, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": -1, "teams": ["frc69", "frc571", "frc176"]}}"""
+    match._alliances = None
+    FirebasePusher.update_match(match, {"predicted_time"})
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "c": "qm",
+        "s": 1,
+        "m": 1,
+        "r": 74,
+        "rt": ["frc69", "frc571", "frc176"],
+        "b": 57,
+        "bt": ["frc3464", "frc20", "frc1073"],
+        "t": None,
+        "pt": predicted_time.timestamp(),
+        "w": "red",
+    }
+    assert FirebasePusher._get_reference("e/2018ct/m/qm1").get() == expected
+
+
+def test_delete_match(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    match = Match(
+        id="2018ct_qm1",
+        alliances_json="""{"blue": {"score": 57, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": 74, "teams": ["frc69", "frc571", "frc176"]}}""",
+        comp_level="qm",
+        event=ndb.Key(Event, "2018ct"),
+        year=2018,
+        set_number=1,
+        match_number=1,
+    )
+
+    FirebasePusher._get_reference("e/2018ct/m/qm1").set("foo")
+    FirebasePusher.delete_match(match)
+    drain_deferred(taskqueue_stub)
+
+    with pytest.raises(firebase_exceptions.NotFoundError):
+        FirebasePusher._get_reference("e/2018ct/m/qm1").get()
+
+
+def test_update_match_queue_status(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    match = Match(
+        id="2018ct_qm1",
+        alliances_json="""{"blue": {"score": 57, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": 74, "teams": ["frc69", "frc571", "frc176"]}}""",
+        comp_level="qm",
+        event=ndb.Key(Event, "2018ct"),
+        year=2018,
+        set_number=1,
+        match_number=1,
+    )
+    nexus_status = EventQueueStatus(
+        data_as_of_ms=0,
+        now_queueing=None,
+        matches={
+            "2018ct_qm1": NexusMatch(
+                label="Quals 1",
+                status=NexusMatchStatus.NOW_QUEUING,
+                played=False,
+                times=NexusMatchTiming(
+                    estimated_queue_time_ms=None,
+                    estimated_start_time_ms=None,
+                ),
+            ),
+        },
+    )
+
+    FirebasePusher.update_match_queue_status(match, nexus_status)
+    drain_deferred(taskqueue_stub)
+
+    assert FirebasePusher._get_reference("e/2018ct/m/qm1").get() == {"q": "Now queuing"}
+
+
+def test_update_match_merges_queue_status(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    match = Match(
+        id="2018ct_qm1",
+        alliances_json="""{"blue": {"score": 57, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": 74, "teams": ["frc69", "frc571", "frc176"]}}""",
+        comp_level="qm",
+        event=ndb.Key(Event, "2018ct"),
+        year=2018,
+        set_number=1,
+        match_number=1,
+    )
+    nexus_status = EventQueueStatus(
+        data_as_of_ms=0,
+        now_queueing=None,
+        matches={
+            "2018ct_qm1": NexusMatch(
+                label="Quals 1",
+                status=NexusMatchStatus.NOW_QUEUING,
+                played=False,
+                times=NexusMatchTiming(
+                    estimated_queue_time_ms=None,
+                    estimated_start_time_ms=None,
+                ),
+            ),
+        },
+    )
+    FirebasePusher.update_match(match, set())
+    drain_deferred(taskqueue_stub)
+
+    FirebasePusher.update_match_queue_status(match, nexus_status)
+    drain_deferred(taskqueue_stub)
+
+    expected = {
+        "c": "qm",
+        "s": 1,
+        "m": 1,
+        "r": 74,
+        "rt": ["frc69", "frc571", "frc176"],
+        "b": 57,
+        "bt": ["frc3464", "frc20", "frc1073"],
+        "t": None,
+        "pt": None,
+        "w": "red",
+        "q": "Now queuing",
+    }
+    assert FirebasePusher._get_reference("e/2018ct/m/qm1").get() == expected
+
+
+def test_update_match_queue_status_not_found(
+    taskqueue_stub: testbed.taskqueue_stub.TaskQueueServiceStub,
+) -> None:
+    match = Match(
+        id="2018ct_qm1",
+        alliances_json="""{"blue": {"score": 57, "teams": ["frc3464", "frc20", "frc1073"]}, "red": {"score": 74, "teams": ["frc69", "frc571", "frc176"]}}""",
+        comp_level="qm",
+        event=ndb.Key(Event, "2018ct"),
+        year=2018,
+        set_number=1,
+        match_number=1,
+    )
+    nexus_status = EventQueueStatus(data_as_of_ms=0, now_queueing=None, matches={})
+
+    FirebasePusher.update_match_queue_status(match, nexus_status)
+    drain_deferred(taskqueue_stub)
+
+    with pytest.raises(firebase_exceptions.NotFoundError):
+        FirebasePusher._get_reference("e/2018ct/m/qm1").get()

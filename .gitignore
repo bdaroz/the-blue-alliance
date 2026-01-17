@@ -1,92 +1,42 @@
-# Personal development files #
-##############################
-mydeploy.sh
+.DS_Store
 
-# Compiled source #
-###################
-*.com
-*.class
-*.dll
-*.exe
-*.o
-*.so
-*.pyc
+**.pyc
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.pyre/
+.vagrant/
 
-# Packages #
-############
-# it's better to unpack these files and commit the raw source
-# git has its own built in compression methods
-*.7z
-*.dmg
-*.gz
-*.iso
-*.jar
-*.rar
-*.tar
-*.zip
-
-# Logs and databases #
-######################
-*.log
-*.sql
-*.sqlite
-
-# OS generated files #
-######################
-# OS X
-.DS_Store*
-.AppleDouble
-.LSOverride
-Icon
-._*
-.Spotlight-V100
-.Trashes
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# Eclipse #
-###########
-*.project
-*.pydevproject
-
-# IDEA
-.idea/**
-
-# Temp files #
-##############
-*.temp
+ci_screenshots.pickle
+ci_screenshots_message.md
+.coverage
+coverage.xml
+.node_coverage/
+**.swp
+venv/
+.venv/
+.testmondata
+.vscode
+.idea
 
 # Compiled/Intermediate Files #
 ###############################
-static/css/less_css/*.css
-static/compiled/*
-version_info.json
-tbaMobilev9openapi.json
+src/build
+src/backend/web/static/javascript/tba_js/tba_keys.js
 
-# Node.js/npm #
-###############
-node_modules
-.npm
-.node_repl_history
+# Node.js
+node_modules/
 
-# Jest Coverage reports #
-#########################
-coverage
+ops/dev/keys/
+# Check in empty storage folder, ignore everything in folder
+ops/dev/storage/*
+!ops/dev/storage/.gitkeep
+src/backend/web/static/javascript/tba_js/tba_keys.js
+tba_dev_config.local.json
 
-# Keys #
-########
-static/javascript/tba_js/tba_keys.js
-ops/deploy_keys.tar
-ops/tbatv-prod-hrd-deploy.json
-ops/dev/conf.json
-ops/dev/*-auth.json
-test_keys.json
+# Ignore Firebase config modules
+.firebaserc
+ui-debug.log
+firebase-debug.log
 
-# Vagrant #
-###########
-.vagrant/
-dev-datastore/
+database-debug.log

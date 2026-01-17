@@ -1,3 +1,4 @@
-lib/* linguist-vendored
-subtrees/* linguist-vendored
-test_data/* linguist-vendored
+old_py2/* linguist-documentation
+
+# Set the default behavior, in case people don't have core.autocrlf set
+*.sh text eol=lf

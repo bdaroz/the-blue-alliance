@@ -1,0 +1,48 @@
+from typing import Any, Dict, Optional, Set
+
+from google.appengine.ext import ndb
+
+
+TAffectedReferences = Dict[str, Set[Any]]
+
+
+class CachedModel(ndb.Model):
+    """
+    A base class inheriting from ndb.Model that encapsulates all things needed
+    for cache clearing and manipulators
+    """
+
+    # Manually overwritten attributes that shoudln't be updated via automated processes (e.g. via FRC API).
+    manual_attrs = ndb.TextProperty(repeated=True)
+
+    # This is set when the model is determined to need updating in ndb
+    _dirty: bool = False
+
+    # This is used in post-update hooks to know when a modely was newly created (vs updated)
+    _is_new: bool = False
+
+    # This stores a mapping of an model property name --> affected keys for cache clearing
+    _affected_references: TAffectedReferences = {}
+
+    # Which references get overwritten
+    _mutable_attrs: Set[str] = set()
+
+    # Attributes where overwriting None is allowed
+    _allow_none_attrs: Set[str] = set()
+
+    # We will merge the lists of these attrs
+    _list_attrs: Set[str] = set()
+
+    _json_attrs: Set[str] = set()
+
+    _auto_union_attrs: Set[str] = set()
+
+    # This will get updated with the attrs that actually change
+    _updated_attrs: Optional[Set[str]] = None
+
+    def __init__(self, *args, **kwargs):
+        super(CachedModel, self).__init__(*args, **kwargs)
+
+        # The initialization path is different for models vs those created via
+        # constructors, so make sure we have a common set of properties defined
+        self._fix_up_properties()

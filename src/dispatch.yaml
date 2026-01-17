@@ -1,0 +1,28 @@
+dispatch:
+  # Beta PWA
+  - url: "beta.thebluealliance.com/*"
+    service: pwa
+
+  - url: "*/api/*"
+    service: py3-api
+
+  - url: "*/clientapi/*"
+    service: py3-api
+
+  - url: "*/tasks/*"
+    service: py3-tasks-io
+
+  - url: "*/backend-tasks/*"
+    service: py3-tasks-io
+
+  - url: "*/_ah/queue/deferred*"
+    service: py3-tasks-io
+
+  - url: "*/backend-tasks-b2/enqueue/*"
+    service: py3-tasks-cpu-enqueue
+
+  - url: "*/backend-tasks-b2/do/*"
+    service: py3-tasks-cpu
+
+  - url: "*/*"
+    service: py3-web

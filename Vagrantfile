@@ -13,14 +13,31 @@ Vagrant.configure("2") do |config|
     rsync__exclude: [
       ".git/",
       "node_modules/",
-      "lib/",
-      "static/compiled/",
+      "src/build/*",
+      "__pycache__",
+      "venv/*",
+      ".pyre/*",
     ],
     rsync__auto: true
 
-  # Forward GAE modules
   ports = []
-  for i in 8080..8089
+
+  # Forward Firebase ports
+  for i in [4000, 4400, 4500, 9005, 9000, 9099]
+    ports.push("#{i}:#{i}")
+    config.vm.network "forwarded_port", guest: i, host: i
+  end
+
+  # Forward GAE modules
+  # Only forward 8080 on CI since some others conflict with GH Actions
+  # and are not needed for testing.
+  if ENV['CI'] != nil
+    gae_module_ports = [8080]
+  else
+    gae_module_ports = 8080..8089
+  end
+
+  for i in gae_module_ports
     ports.push("#{i}:#{i}")
     config.vm.network "forwarded_port", guest: i, host: i
   end
@@ -30,12 +47,26 @@ Vagrant.configure("2") do |config|
   config.vm.network "forwarded_port", guest: 8000, host: 8000
 
   # Provision with docker
-  config.vm.hostname = "tba-docker"
+  config.vm.hostname = "tba-py3-docker"
   config.vm.provider "docker" do |d|
-    d.name = "tba"
-    d.build_dir = "ops/dev"
+    d.name = "tba-py3"
     d.ports = ports
     d.has_ssh = true
+
+    if ENV['CI'] != nil
+      # On CI, we use the locally prebuilt image
+      d.image = "localhost:5000/tba-py3-dev:latest"
+    else
+      if ENV['TBA_LOCAL_DOCKERFILE'] != nil
+        # We can build the docker container from the local Dockerfile
+        d.build_dir = "ops/dev/docker"
+      else
+        # But by deafult, run with a prebuilt container image because it's faster
+        d.image = "ghcr.io/the-blue-alliance/the-blue-alliance/tba-py3-dev:latest"
+      end
+    end
+
+
   end
 
   # Configure ssh into container
@@ -46,23 +77,27 @@ Vagrant.configure("2") do |config|
 
   # Provision dependencies
   config.vm.provision "shell",
-    inline: "cd /tba && ./ops/dev/bootstrap-dev-container.sh",
+    inline: "cd /tba && ./ops/dev/vagrant/bootstrap-dev-container.sh",
     privileged: false
 
   # Load in the datastore file, needs to run before devserver start
-  config.vm.provision "shell",
-    inline: "cd /tba && ./ops/dev/pull-datastore.sh push",
-    privileged: false
+  #config.vm.provision "shell",
+  #  inline: "cd /tba && ./ops/dev/pull-datastore.sh push",
+  #  privileged: false
 
   # Start the GAE devserver
   config.vm.provision "shell",
-    inline: "cd /tba && ./ops/dev/start-devserver.sh",
+    inline: "cd /tba && ./ops/dev/vagrant/start-devserver.sh",
     privileged: false,
     run: "always"
 
   # When the container halts, pull the datastore files
-  config.trigger.before [:halt, :destroy] do |trigger|
-    trigger.info = "Pulling datastore from remote container"
-    trigger.run = {inline: "./ops/dev/pull-datastore.sh pull"}
-  end
+  #config.trigger.before [:halt, :destroy] do |trigger|
+  #  trigger.info = "Pulling datastore from remote container"
+  #  trigger.run = {inline: "./ops/dev/pull-datastore.sh pull"}
+  #end
+
+  # Fix for WSL
+  # Source: https://github.com/hashicorp/vagrant/issues/10576
+  config.vm.synced_folder '.', '/vagrant', disabled: true
 end
